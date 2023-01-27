@@ -2,3 +2,5 @@
 *.html
 links.txt
 sandbox/
+.vscode/
+__pycache__
