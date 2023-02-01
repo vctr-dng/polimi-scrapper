@@ -16,12 +16,14 @@ class Scrapper:
 
     renamed_labels = {"Name": "Master", "Credits (CFU / ECTS)": "Credits"}
 
+    sort_order = ["Semester", "Master", "Track", "Credits"]
+
+    sort_direction = [True] * len(sort_order)
+    sort_direction[sort_order.index("Semester")] = False
+    sort_direction[sort_order.index("Credits")] = False
+
     def __init__(self):
         pass
-
-    @staticmethod
-    def __call__():
-        print("called")
 
     @staticmethod
     def getURLContent(URL: str):
@@ -55,9 +57,55 @@ class Scrapper:
                 else:
                     data[label] = str(value)
 
-        relevantData = pd.DataFrame(
+        relevantDataFrame = pd.DataFrame(
             {label: data[label] for label in Scrapper.labels}, index=[0]
         )
-        relevantData.insert(relevantData.shape[1], "URL", URL)
+        relevantDataFrame.insert(relevantDataFrame.shape[1], "URL", URL)
 
-        return relevantData
+        return relevantDataFrame
+
+    @staticmethod
+    def postProcessDataFrame(df: pd.DataFrame, rmDuplicate=False) -> pd.DataFrame:
+        """
+        Rename some columns
+        Remove duplicate entries
+        """
+
+        df.rename(columns=Scrapper.renamed_labels, inplace=True)
+
+        if rmDuplicate:
+            df = df.drop_duplicates(subset=["ID Code"], keep="first")
+
+        df = df.sort_values(
+            by=Scrapper.sort_order, ascending=Scrapper.sort_direction, ignore_index=True
+        )
+
+        return df
+
+    def getDump(self, df: pd.DataFrame) -> str:
+        dfGroups = df.groupby(["Master", "Track"], sort=False)
+
+        rowGroups = list(dfGroups.groups.keys())
+
+        dump = (
+            df.head(0)
+            .drop(columns=["Master", "Track"])
+            .to_csv(sep="\t", index=False, header=True)
+        )
+
+        for i in range(len(rowGroups)):
+            group = rowGroups[i]
+            masterName = group[0]
+            trackName = group[1]
+            if masterName != rowGroups[i - 1][0]:
+                # print(masterName)
+                dump += "\n" + masterName + "\t" * (df.shape[1] - 2 - 1) + "\n"
+            # print(f'\t{trackName}')
+            dump += "\n\t" + trackName + "\t" * (df.shape[1] - 1 - 2 - 1) + "\n\n"
+
+            truncatedDataFrame = dfGroups.get_group(group).drop(
+                columns=["Master", "Track"]
+            )
+            dump += truncatedDataFrame.to_csv(sep="\t", index=False, header=False)
+
+        return dump
